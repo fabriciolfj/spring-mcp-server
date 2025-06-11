@@ -5,6 +5,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Component
 public class ThemeParkApiTools {
@@ -18,14 +22,6 @@ public class ThemeParkApiTools {
         this.restClient = restClientBuilder
                 .baseUrl(THEMEPARKS_API_BASE_URL)
                 .build();
-    }
-
-    @Tool(name = "getDestinations",
-            description = "Get list of resort destinations, including their " +
-                    "entity ID, name, and a child list of theme parks")
-    public List<Destination> getDestinations() {  //
-        return sendRequestTo("/destinations", DestinationList.class)
-                .destinations();
     }
 
     @Tool(name = "getEntity",
@@ -51,11 +47,23 @@ public class ThemeParkApiTools {
 
     @Tool(name = "getEntityScheduleForDate",
             description = "Get a park's operating hours given the park's " +
-                    "entity ID and a specific year and month.")
-    public EntitySchedule getEntitySchedule(
-            String entityId, String year, String month) {  //
-        return sendRequestTo("/entity/{entityId}/schedule/{year}/{month}",
-                EntitySchedule.class, entityId, year, month);
+                    "entity ID and a specific date (in yyyy-MM-dd format).")
+    public EntitySchedule getEntitySchedule(String entityId, String date) {
+        String[] dateSplit = date.split("-");   //
+        String year = dateSplit[0];
+        String month = dateSplit[1];
+
+        var fullSchedule = sendRequestTo("/entity/{entityId}/schedule/{year}/{month}",
+                EntitySchedule.class, entityId, year, month);  //
+
+        var filteredSchedule = fullSchedule.schedule().stream()
+                .filter(scheduleEntry -> scheduleEntry.date().equals(date)) //
+                .toList();
+
+        return new EntitySchedule(    //
+                fullSchedule.id(),
+                fullSchedule.name(),
+                filteredSchedule);
     }
 
     @Tool(name = "getEntityLive",
@@ -72,6 +80,44 @@ public class ThemeParkApiTools {
                 .uri(uri, uriVariables)
                 .retrieve()
                 .body(responseType);
+    }
+
+    @Tool(name = "getAllParks",
+            description = "Get a list of all parks (including their name and " +
+                    "entity ID)")
+    public List<Park> getAllParks() {    //
+        return getParkStream(park -> true)
+                .collect(Collectors.toList());
+    }
+
+    @Tool(name = "getParksByName",
+            description = "Get a list of parks (including their name and " +
+                    "entity ID) given a park name or resort name")
+    public List<Park> getParksByName(String parkName) {       //
+        String lcParkName = parkName.toLowerCase();
+        return getParkStream(
+                park -> park.name().toLowerCase().contains(lcParkName)
+                        || park.resortName().toLowerCase().contains(lcParkName))
+                .collect(Collectors.toList());
+    }
+
+    private Stream<Park> getParkStream(Predicate<Park> filter) {      //
+        var destinationList = sendRequestTo("/destinations", DestinationList.class);
+
+        return Objects.requireNonNull(destinationList).destinations().stream()
+                .flatMap(destination -> destination.parks().stream()
+                        .map(park ->        //
+                                new Park(
+                                        park.id(),
+                                        stripNonAlphanumeric(park.name()),
+                                        destination.id(),
+                                        stripNonAlphanumeric(destination.name()))
+                        )
+                        .filter(filter));
+    }
+
+    private String stripNonAlphanumeric(String input) {
+        return input.replaceAll("[^a-zA-Z0-9\\s-]", "");
     }
 
 }

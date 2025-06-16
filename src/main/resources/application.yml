@@ -1,8 +1,15 @@
-spring:
-  main:
-    banner-mode: off
-    web-application-type: none
+#spring:
+#  main:
+#    banner-mode: off
+#    web-application-type: none
 
-logging:
-  level:
-    root: ERROR
+#logging:
+#  level:
+#    root: ERROR
+spring:
+  ai:
+    mcp:
+      server:
+        sse-endpoint: /sse
+server:
+  port: 3001
